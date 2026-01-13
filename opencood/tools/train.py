@@ -113,8 +113,19 @@ def main():
             # second argument is always your label dictionary.
             final_loss = criterion(output_dict, batch_data['ego']['label_dict'])
             if len(output_dict) > 2:
-                single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
-                single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
+               
+                # 原来的代码（报错）：
+                # single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
+
+                # 修改后的代码（安全跳过）：
+                if 'label_dict_single_v' in batch_data['ego']:
+                    single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
+                else:
+                    single_loss_v = 0
+                if 'label_dict_single_i' in batch_data['ego']:
+                    single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
+                else:
+                    single_loss_i = 0
                 if 'fusion_args' in hypes['model']['args']:
                     if 'communication' in hypes['model']['args']['fusion_args']:
                         comm = hypes['model']['args']['fusion_args']['communication']
@@ -155,8 +166,16 @@ def main():
                     final_loss = criterion(ouput_dict,
                                            batch_data['ego']['label_dict'])
                     if len(output_dict) > 2:
-                        single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
-                        single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
+                        if 'label_dict_single_v' in batch_data['ego']:
+                            single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
+                        else:
+                            single_loss_v = 0
+                        # single_loss_v = criterion(output_dict, batch_data['ego']['label_dict_single_v'], prefix='_single_v')
+                        if 'label_dict_single_i' in batch_data['ego']:
+                            single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
+                        else:
+                            single_loss_i = 0
+                        # single_loss_i = criterion(output_dict, batch_data['ego']['label_dict_single_i'], prefix='_single_i')
                         final_loss += single_loss_v + single_loss_i
 
                         if 'fusion_args' in hypes['model']['args']:

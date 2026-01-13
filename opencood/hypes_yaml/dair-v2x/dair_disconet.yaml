@@ -24,7 +24,7 @@ train_params:
 
 
 fusion:
-  core_method: 'IntermediateFusionDatasetDAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
+  core_method: 'DAIR' # LateFusionDataset, EarlyFusionDataset, IntermediateFusionDataset supported
   args:
     proj_first: false
     clip_pc: false

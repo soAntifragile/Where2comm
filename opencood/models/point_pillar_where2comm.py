@@ -6,8 +6,11 @@
 from numpy import record
 import torch.nn as nn
 
+# 体素特征提取
 from opencood.models.sub_modules.pillar_vfe import PillarVFE
+
 from opencood.models.sub_modules.point_pillar_scatter import PointPillarScatter
+# 主干网络
 from opencood.models.sub_modules.base_bev_backbone import BaseBEVBackbone
 from opencood.models.sub_modules.base_bev_backbone_resnet import ResNetBEVBackbone
 from opencood.models.sub_modules.downsample_conv import DownsampleConv
@@ -17,11 +20,16 @@ from opencood.models.sub_modules.dcn_net import DCNNet
 from opencood.models.fuse_modules.where2comm_attn import Where2comm
 import torch
 
-class PointPillarWhere2comm(nn.Module):
+class PointPillarWhere2comm(nn.Module):# 继承, 一个标准训练模型
+    # 构造函数
     def __init__(self, args):
         super(PointPillarWhere2comm, self).__init__()
 
-        # PIllar VFE
+        # 这三步合起来就是论文里的 Encoder
+        # PIllar VFE Pillar Voxel Feature Encoder
+        
+        # 把LiDAR 点云数据，变成一张整齐的 BEV 特征图
+        
         self.pillar_vfe = PillarVFE(args['pillar_vfe'],
                                     num_point_features=4,
                                     voxel_size=args['voxel_size'],
@@ -33,6 +41,7 @@ class PointPillarWhere2comm(nn.Module):
             self.backbone = BaseBEVBackbone(args['base_bev_backbone'], 64)
 
         # used to downsample the feature map for efficient computation
+        # 降采样
         self.shrink_flag = False
         if 'shrink_header' in args:
             self.shrink_flag = True
@@ -51,9 +60,13 @@ class PointPillarWhere2comm(nn.Module):
         # self.fusion_net = TransformerFusion(args['fusion_args'])
         self.fusion_net = Where2comm(args['fusion_args'])
         self.multi_scale = args['fusion_args']['multi_scale']
-
+         
+        # Generator & Decoder
+        # nn.Conv2d：定义了一个 2D 卷积层。
+        # (Classification Head)：分类头，用来判断“这里有没有车”，即高置信度。
         self.cls_head = nn.Conv2d(128 * 2, args['anchor_number'],
                                   kernel_size=1)
+        # (Regression Head)：回归头，用来计算“车的具体位置和大小 (x, y, w, l, h, angle)
         self.reg_head = nn.Conv2d(128 * 2, 7 * args['anchor_number'],
                                   kernel_size=1)
         if args['backbone_fix']:
@@ -96,17 +109,23 @@ class PointPillarWhere2comm(nn.Module):
         record_len = data_dict['record_len']
 
         pairwise_t_matrix = data_dict['pairwise_t_matrix']
-
+        # ... 数据解包 ...
         batch_dict = {'voxel_features': voxel_features,
                       'voxel_coords': voxel_coords,
                       'voxel_num_points': voxel_num_points,
                       'record_len': record_len}
         # n, 4 -> n, c
+        # 点 -> 体素
         batch_dict = self.pillar_vfe(batch_dict)
         # n, c -> N, C, H, W
+        # 体素 -> 伪图像
         batch_dict = self.scatter(batch_dict)
+        # 伪图像 -> 高级特征
         batch_dict = self.backbone(batch_dict)
         # N, C, H', W'. [N, 384, 100, 352]
+
+        # spatial_features_2d即Feature Map
+
         spatial_features_2d = batch_dict['spatial_features_2d']
         
         # downsample feature to reduce memory
@@ -121,10 +140,16 @@ class PointPillarWhere2comm(nn.Module):
         # spatial_features_2d is [sum(cav_num), 256, 50, 176]
         # output only contains ego
         # [B, 256, 50, 176]
+
+        # k后的置信分数C_i^{(K)}
+        # 下一轮通讯前哪里是高置信度数据（需要发送）
         psm_single = self.cls_head(spatial_features_2d)
+        # 下一轮通讯前高置信度数据的具体信息（车的具体位置和大小 (x, y, w, l, h, angle)
         rm_single = self.reg_head(spatial_features_2d)
 
         # print('spatial_features_2d: ', spatial_features_2d.shape)
+
+        # fused_feature 增强特征图
         if self.multi_scale:
             fused_feature, communication_rates, result_dict = self.fusion_net(batch_dict['spatial_features'],
                                             psm_single,
@@ -140,12 +165,13 @@ class PointPillarWhere2comm(nn.Module):
                                             psm_single,
                                             record_len,
                                             pairwise_t_matrix)
-            
+        
             
         # print('fused_feature: ', fused_feature.shape)
+        # 使用融合后特征再次计算
         psm = self.cls_head(fused_feature)
         rm = self.reg_head(fused_feature)
-
+        # 这次就可以看到红车的检测框了
         output_dict = {'psm': psm,
                        'rm': rm
                        }
